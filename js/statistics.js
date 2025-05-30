@@ -4,204 +4,361 @@ class StatisticsManager {
         this.dataManager = dataManager;
     }
 
-    // 初始化統計管理
-    init() {
-        this.loadStudentFilters();
-        this.setDefaultDates();
-        this.updateStatistics();
-    }
-
-    // 載入學員篩選選項
-    loadStudentFilters() {
-        const select = document.getElementById('statsStudentFilter');
-        select.innerHTML = '<option value="">所有學員</option>';
-        
-        const students = this.dataManager.getStudents();
-        students.forEach(student => {
-            const option = document.createElement('option');
-            option.value = student.id;
-            option.textContent = `${student.name} (${this.dataManager.getClassName(student.class)})`;
-            select.appendChild(option);
-        });
-    }
-
-    // 設定預設日期
-    setDefaultDates() {
-        const today = new Date().toISOString().split('T')[0];
-        const oneMonthAgo = new Date();
-        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-        
-        document.getElementById('statsStartDate').value = oneMonthAgo.toISOString().split('T')[0];
-        document.getElementById('statsEndDate').value = today;
-    }
-
-    // 更新統計
-    updateStatistics() {
-        const startDate = document.getElementById('statsStartDate').value;
-        const endDate = document.getElementById('statsEndDate').value;
-        const classFilter = document.getElementById('statsClassFilter').value;
-        const studentFilter = document.getElementById('statsStudentFilter').value;
-        
-        // 篩選學員
-        let filteredStudents = this.dataManager.getStudents();
-        if (classFilter) {
-            filteredStudents = filteredStudents.filter(s => s.class === classFilter);
+    // 生成綜合統計報表
+    async generateStatistics(filters = {}) {
+        try {
+            const { classId, startDate, endDate } = filters;
+            
+            // 獲取基礎數據
+            const students = this.dataManager.getStudents();
+            const classes = this.dataManager.classDefinitions;
+            const attendance = this.dataManager.attendance;
+            
+            // 應用篩選條件
+            let filteredStudents = students;
+            let filteredAttendance = Object.keys(attendance);
+            
+            if (classId) {
+                filteredStudents = students.filter(s => s.class === classId);
+                filteredAttendance = filteredAttendance.filter(key => {
+                    const studentId = key.split('_')[1];
+                    const student = students.find(s => s.id === studentId);
+                    return student && student.class === classId;
+                });
+            }
+            
+            if (startDate) {
+                filteredAttendance = filteredAttendance.filter(key => {
+                    const date = key.split('_')[0];
+                    return date >= startDate;
+                });
+            }
+            
+            if (endDate) {
+                filteredAttendance = filteredAttendance.filter(key => {
+                    const date = key.split('_')[0];
+                    return date <= endDate;
+                });
+            }
+            
+            // 計算統計數據
+            const totalStudents = filteredStudents.length;
+            const totalClasses = classId ? 1 : Object.keys(classes).length;
+            const totalAttendanceRecords = filteredAttendance.length;
+            const presentCount = filteredAttendance.filter(key => attendance[key] === 'present').length;
+            const absentCount = filteredAttendance.filter(key => attendance[key] === 'absent').length;
+            const averageAttendance = totalAttendanceRecords > 0 ? 
+                Math.round((presentCount / totalAttendanceRecords) * 100) : 0;
+            
+            return {
+                totalStudents,
+                totalClasses,
+                totalAttendance: presentCount,
+                totalAbsent: absentCount,
+                averageAttendance,
+                totalAttendanceRecords,
+                period: {
+                    startDate: startDate || '開始',
+                    endDate: endDate || '現在'
+                }
+            };
+        } catch (error) {
+            console.error('生成統計報表失敗:', error);
+            throw error;
         }
-        if (studentFilter) {
-            filteredStudents = filteredStudents.filter(s => s.id === studentFilter);
+    }
+
+    // 獲取學員出席率排名
+    getStudentAttendanceRanking(limit = 10, classId = null, startDate = null, endDate = null) {
+        try {
+            let students = this.dataManager.getStudents();
+            
+            if (classId) {
+                students = students.filter(s => s.class === classId);
+            }
+            
+            const studentStats = students.map(student => {
+                const stats = this.getStudentAttendanceStats(student.id, startDate, endDate);
+                return {
+                    id: student.id,
+                    name: student.name,
+                    className: this.dataManager.getClassName(student.class),
+                    ...stats
+                };
+            });
+            
+            return studentStats
+                .filter(s => s.total > 0)
+                .sort((a, b) => b.attendanceRate - a.attendanceRate)
+                .slice(0, limit);
+        } catch (error) {
+            console.error('獲取學員出席率排名失敗:', error);
+            throw error;
         }
+    }
+
+    // 獲取課堂出席率統計
+    getClassAttendanceStats(startDate = null, endDate = null) {
+        try {
+            const classes = this.dataManager.classDefinitions;
+            
+            return Object.keys(classes).map(classId => {
+                const stats = this.getClassAttendanceStatsById(classId, startDate, endDate);
+                return {
+                    id: classId,
+                    name: classes[classId].name,
+                    dayOfWeek: classes[classId].dayOfWeek,
+                    time: `${classes[classId].startTime} - ${classes[classId].endTime}`,
+                    ...stats
+                };
+            }).sort((a, b) => b.averageAttendanceRate - a.averageAttendanceRate);
+        } catch (error) {
+            console.error('獲取課堂出席率統計失敗:', error);
+            throw error;
+        }
+    }
+
+    // 獲取單個學員的出席統計
+    getStudentAttendanceStats(studentId, startDate = null, endDate = null) {
+        try {
+            const attendance = this.dataManager.attendance;
+            let studentAttendance = Object.keys(attendance).filter(key => {
+                const [date, sId] = key.split('_');
+                if (sId !== studentId) return false;
+                if (startDate && date < startDate) return false;
+                if (endDate && date > endDate) return false;
+                return true;
+            });
+            
+            const total = studentAttendance.length;
+            const present = studentAttendance.filter(key => attendance[key] === 'present').length;
+            const absent = studentAttendance.filter(key => attendance[key] === 'absent').length;
+            const attendanceRate = total > 0 ? Math.round((present / total) * 100) : 0;
+            
+            return { total, present, absent, attendanceRate };
+        } catch (error) {
+            console.error('獲取學員出席統計失敗:', error);
+            throw error;
+        }
+    }
+
+    // 獲取單個課堂的出席統計
+    getClassAttendanceStatsById(classId, startDate = null, endDate = null) {
+        try {
+            const attendance = this.dataManager.attendance;
+            const students = this.dataManager.getStudents(classId);
+            
+            let classAttendance = Object.keys(attendance).filter(key => {
+                const [date, studentId] = key.split('_');
+                const student = students.find(s => s.id === studentId);
+                if (!student) return false;
+                if (startDate && date < startDate) return false;
+                if (endDate && date > endDate) return false;
+                return true;
+            });
+            
+            const total = classAttendance.length;
+            const present = classAttendance.filter(key => attendance[key] === 'present').length;
+            const absent = classAttendance.filter(key => attendance[key] === 'absent').length;
+            const averageAttendanceRate = total > 0 ? Math.round((present / total) * 100) : 0;
+            
+            // 計算學員數量
+            const studentCount = students.length;
+            
+            // 計算課堂次數
+            const uniqueDates = new Set(classAttendance.map(key => key.split('_')[0])).size;
+            
+            return {
+                total,
+                present,
+                absent,
+                averageAttendanceRate,
+                studentCount,
+                classCount: uniqueDates
+            };
+        } catch (error) {
+            console.error('獲取課堂出席統計失敗:', error);
+            throw error;
+        }
+    }
+
+    // 獲取每日出席統計
+    getDailyAttendanceStats(startDate, endDate, classId = null) {
+        try {
+            const attendance = this.dataManager.attendance;
+            let filteredKeys = Object.keys(attendance).filter(key => {
+                const [date, studentId] = key.split('_');
+                if (date < startDate || date > endDate) return false;
+                
+                if (classId) {
+                    const student = this.dataManager.getStudent(studentId);
+                    if (!student || student.class !== classId) return false;
+                }
+                
+                return true;
+            });
+            
+            // 按日期分組統計
+            const dailyStats = {};
+            filteredKeys.forEach(key => {
+                const [date] = key.split('_');
+                if (!dailyStats[date]) {
+                    dailyStats[date] = {
+                        date: date,
+                        total: 0,
+                        present: 0,
+                        absent: 0
+                    };
+                }
+                
+                dailyStats[date].total++;
+                if (attendance[key] === 'present') {
+                    dailyStats[date].present++;
+                } else if (attendance[key] === 'absent') {
+                    dailyStats[date].absent++;
+                }
+            });
+            
+            // 計算出席率並排序
+            return Object.values(dailyStats)
+                .map(day => ({
+                    ...day,
+                    attendanceRate: day.total > 0 ? Math.round((day.present / day.total) * 100) : 0
+                }))
+                .sort((a, b) => a.date.localeCompare(b.date));
+        } catch (error) {
+            console.error('獲取每日出席統計失敗:', error);
+            throw error;
+        }
+    }
+
+    // 獲取統計摘要
+    getStatisticsSummary() {
+        try {
+            const students = this.dataManager.getStudents();
+            const classes = this.dataManager.classDefinitions;
+            const attendance = this.dataManager.attendance;
+            
+            const totalStudents = students.length;
+            const totalClasses = Object.keys(classes).length;
+            const totalAttendanceRecords = Object.keys(attendance).length;
+            const presentCount = Object.values(attendance).filter(status => status === 'present').length;
+            const overallAttendanceRate = totalAttendanceRecords > 0 ? 
+                Math.round((presentCount / totalAttendanceRecords) * 100) : 0;
+            
+            // 最近7天的統計
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+            
+            const recentAttendanceKeys = Object.keys(attendance).filter(key => {
+                const date = key.split('_')[0];
+                return date >= sevenDaysAgoStr;
+            });
+            
+            const recentPresentCount = recentAttendanceKeys.filter(key => attendance[key] === 'present').length;
+            const recentAttendanceRate = recentAttendanceKeys.length > 0 ? 
+                Math.round((recentPresentCount / recentAttendanceKeys.length) * 100) : 0;
+            
+            return {
+                totalStudents,
+                totalClasses,
+                totalAttendanceRecords,
+                overallAttendanceRate,
+                recentAttendanceRate,
+                trend: recentAttendanceRate - overallAttendanceRate
+            };
+        } catch (error) {
+            console.error('獲取統計摘要失敗:', error);
+            throw error;
+        }
+    }
+
+    // 匯出統計報表為CSV
+    exportStatisticsToCSV(type, filters = {}) {
+        try {
+            let csvContent = '';
+            
+            switch (type) {
+                case 'student_ranking':
+                    csvContent = this.exportStudentRankingCSV(filters);
+                    break;
+                case 'class_stats':
+                    csvContent = this.exportClassStatsCSV(filters);
+                    break;
+                case 'daily_stats':
+                    csvContent = this.exportDailyStatsCSV(filters);
+                    break;
+                default:
+                    throw new Error('不支援的匯出類型');
+            }
+            
+            return csvContent;
+        } catch (error) {
+            console.error('匯出統計報表失敗:', error);
+            throw error;
+        }
+    }
+
+    // 匯出學員排名CSV
+    exportStudentRankingCSV(filters) {
+        const ranking = this.getStudentAttendanceRanking(100, filters.classId, filters.startDate, filters.endDate);
         
-        // 篩選出席記錄
-        const filteredAttendance = this.dataManager.getFilteredAttendance(
-            startDate, endDate, classFilter, studentFilter
+        const headers = ['排名', '學員姓名', '班別', '總課堂數', '出席次數', '缺席次數', '出席率'];
+        const rows = ranking.map((student, index) => [
+            index + 1,
+            student.name,
+            student.className,
+            student.total,
+            student.present,
+            student.absent,
+            `${student.attendanceRate}%`
+        ]);
+        
+        return [headers, ...rows]
+            .map(row => row.map(field => `"${field}"`).join(','))
+            .join('\n');
+    }
+
+    // 匯出課堂統計CSV
+    exportClassStatsCSV(filters) {
+        const classStats = this.getClassAttendanceStats(filters.startDate, filters.endDate);
+        
+        const headers = ['課堂名稱', '上課時間', '學員數', '課堂次數', '總出席次數', '總缺席次數', '平均出席率'];
+        const rows = classStats.map(classItem => [
+            classItem.name,
+            classItem.time,
+            classItem.studentCount,
+            classItem.classCount,
+            classItem.present,
+            classItem.absent,
+            `${classItem.averageAttendanceRate}%`
+        ]);
+        
+        return [headers, ...rows]
+            .map(row => row.map(field => `"${field}"`).join(','))
+            .join('\n');
+    }
+
+    // 匯出每日統計CSV
+    exportDailyStatsCSV(filters) {
+        const dailyStats = this.getDailyAttendanceStats(
+            filters.startDate, 
+            filters.endDate, 
+            filters.classId
         );
         
-        // 計算統計數據
-        const totalStudents = filteredStudents.length;
-        const presentRecords = filteredAttendance.filter(key => 
-            this.dataManager.attendance[key] === 'present'
-        ).length;
-        const totalRecords = filteredAttendance.length;
-        const avgRate = totalRecords > 0 ? Math.round((presentRecords / totalRecords) * 100) : 0;
+        const headers = ['日期', '總出席記錄', '出席次數', '缺席次數', '出席率'];
+        const rows = dailyStats.map(day => [
+            day.date,
+            day.total,
+            day.present,
+            day.absent,
+            `${day.attendanceRate}%`
+        ]);
         
-        // 更新顯示
-        document.getElementById('totalStudents').textContent = totalStudents;
-        document.getElementById('periodAttendance').textContent = presentRecords;
-        document.getElementById('avgAttendance').textContent = avgRate + '%';
-        document.getElementById('totalClasses').textContent = new Set(
-            filteredAttendance.map(key => key.split('_')[0])
-        ).size;
-        
-        // 更新學員詳細統計
-        this.updateStudentStats(filteredStudents, startDate, endDate);
-        
-        // 更新圖表
-        this.drawAttendanceChart(filteredAttendance);
-    }
-
-    // 更新學員詳細統計
-    updateStudentStats(filteredStudents, startDate, endDate) {
-        const container = document.getElementById('studentStatsList');
-        
-        if (filteredStudents.length === 0) {
-            container.innerHTML = '<p>無符合條件的學員</p>';
-            return;
-        }
-        
-        const statsHtml = filteredStudents.map(student => {
-            const stats = this.dataManager.getStudentStats(student.id, startDate, endDate);
-            
-            return `
-                <div class="student-card">
-                    <div class="student-header">
-                        <div>
-                            <span class="student-name">${student.name}</span>
-                            <span class="class-badge">${this.dataManager.getClassName(student.class)}</span>
-                        </div>
-                        <div>
-                            <span class="class-badge">${stats.rate}% 出席率</span>
-                        </div>
-                    </div>
-                    <div>
-                        <strong>出席記錄：</strong> ${stats.present}/${stats.total} 堂課<br>
-                        <strong>加入日期：</strong> ${student.joinDate}
-                    </div>
-                </div>
-            `;
-        }).join('');
-        
-        container.innerHTML = statsHtml;
-    }
-
-    // 繪製出席率圖表
-    drawAttendanceChart(attendanceData) {
-        const canvas = document.getElementById('attendanceChart');
-        const ctx = canvas.getContext('2d');
-        
-        // 清除畫布
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        if (attendanceData.length === 0) {
-            ctx.fillStyle = '#666';
-            ctx.font = '16px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('暫無數據', canvas.width / 2, canvas.height / 2);
-            return;
-        }
-        
-        // 按日期分組統計
-        const dateStats = {};
-        attendanceData.forEach(key => {
-            const [date] = key.split('_');
-            if (!dateStats[date]) {
-                dateStats[date] = { present: 0, absent: 0 };
-            }
-            if (this.dataManager.attendance[key] === 'present') {
-                dateStats[date].present++;
-            } else if (this.dataManager.attendance[key] === 'absent') {
-                dateStats[date].absent++;
-            }
-        });
-        
-        const dates = Object.keys(dateStats).sort().slice(-10); // 最近10天
-        
-        if (dates.length === 0) {
-            ctx.fillStyle = '#666';
-            ctx.font = '16px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('暫無數據', canvas.width / 2, canvas.height / 2);
-            return;
-        }
-        
-        const maxValue = Math.max(...dates.map(date => 
-            dateStats[date].present + dateStats[date].absent
-        ));
-        
-        const barWidth = canvas.width / dates.length * 0.8;
-        const barSpacing = canvas.width / dates.length * 0.2;
-        
-        dates.forEach((date, index) => {
-            const stats = dateStats[date];
-            const presentHeight = (stats.present / maxValue) * (canvas.height - 60);
-            const absentHeight = (stats.absent / maxValue) * (canvas.height - 60);
-            
-            const x = index * (barWidth + barSpacing) + barSpacing;
-            
-            // 繪製出席條
-            ctx.fillStyle = '#27ae60';
-            ctx.fillRect(x, canvas.height - 30 - presentHeight, barWidth / 2, presentHeight);
-            
-            // 繪製缺席條
-            ctx.fillStyle = '#e74c3c';
-            ctx.fillRect(x + barWidth / 2, canvas.height - 30 - absentHeight, barWidth / 2, absentHeight);
-            
-            // 繪製日期標籤
-            ctx.fillStyle = '#333';
-            ctx.font = '10px Arial';
-            ctx.textAlign = 'center';
-            ctx.save();
-            ctx.translate(x + barWidth / 2, canvas.height - 5);
-            ctx.rotate(-Math.PI / 4);
-            ctx.fillText(date.slice(-5), 0, 0);
-            ctx.restore();
-        });
-        
-        // 圖例
-        ctx.fillStyle = '#27ae60';
-        ctx.fillRect(10, 10, 15, 15);
-        ctx.fillStyle = '#333';
-        ctx.font = '12px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText('出席', 30, 22);
-        
-        ctx.fillStyle = '#e74c3c';
-        ctx.fillRect(80, 10, 15, 15);
-        ctx.fillStyle = '#333';
-        ctx.fillText('缺席', 100, 22);
+        return [headers, ...rows]
+            .map(row => row.map(field => `"${field}"`).join(','))
+            .join('\n');
     }
 }
-
-// 全局函數
-function updateStatistics() {
-    statisticsManager.updateStatistics();
-} 
