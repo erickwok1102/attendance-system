@@ -1,7 +1,7 @@
 class DataManager {
     constructor() {
-        this.SHEET_ID = '你的Google Sheet ID';  // 稍後替換
-        this.API_KEY = '你的API Key';  // 稍後替換
+        this.SHEET_ID = '1paCFt-QxJ3HjTrA4lOnZFQjuw2I7jh8KkTPiNSbfcoo';  // 稍後替換
+        this.API_KEY = 'AIzaSyDJ8o7jgsNoJeczhdL49U8rGTp4LvxtRdo';  // 稍後替換
         this.RANGE = 'Sheet1!A:Z';
     }
 
