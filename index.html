@@ -9,7 +9,32 @@
 <body>
     <div id="app">
         <h1>Attendance System</h1>
-        <!-- 你的HTML內容 -->
+        
+        <!-- 添加基本UI元素 -->
+        <div class="container">
+            <!-- 學生管理部分 -->
+            <div class="section">
+                <h2>學生管理</h2>
+                <div class="form-group">
+                    <input type="text" id="studentName" placeholder="學生姓名">
+                    <input type="text" id="studentClass" placeholder="班級">
+                    <button onclick="app.studentManager.addStudent()">添加學生</button>
+                </div>
+                <div id="studentList"></div>
+            </div>
+
+            <!-- 點名部分 -->
+            <div class="section">
+                <h2>點名系統</h2>
+                <div class="form-group">
+                    <select id="classSelect">
+                        <option value="">選擇班級</option>
+                    </select>
+                    <button onclick="app.attendanceManager.takeAttendance()">開始點名</button>
+                </div>
+                <div id="attendanceList"></div>
+            </div>
+        </div>
     </div>
 
     <!-- Google Sheets API -->
