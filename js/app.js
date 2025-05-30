@@ -9,39 +9,116 @@ let statisticsManager;
 // 應用程式初始化
 document.addEventListener('DOMContentLoaded', async function() {
     try {
-        console.log('開始初始化應用程式...');
+        console.log('🚀 開始初始化應用程式...');
+        
+        // 檢查基本環境
+        if (typeof localStorage === 'undefined') {
+            throw new Error('瀏覽器不支援 localStorage');
+        }
+        
+        if (typeof JSON === 'undefined') {
+            throw new Error('瀏覽器不支援 JSON');
+        }
+        
+        // 檢查必要的類是否存在
+        if (typeof DataManager === 'undefined') {
+            throw new Error('DataManager 類未載入');
+        }
+        
+        if (typeof StudentManager === 'undefined') {
+            throw new Error('StudentManager 類未載入');
+        }
+        
+        if (typeof ClassManager === 'undefined') {
+            throw new Error('ClassManager 類未載入');
+        }
+        
+        if (typeof AttendanceManager === 'undefined') {
+            throw new Error('AttendanceManager 類未載入');
+        }
+        
+        if (typeof StatisticsManager === 'undefined') {
+            throw new Error('StatisticsManager 類未載入');
+        }
+        
+        // 檢查dataManager實例是否存在
+        if (typeof dataManager === 'undefined') {
+            throw new Error('dataManager 實例未創建');
+        }
         
         // 初始化數據管理器
-        console.log('初始化數據管理器...');
+        console.log('📊 初始化數據管理器...');
         await dataManager.init();
-        console.log('數據管理器初始化完成');
+        console.log('✅ 數據管理器初始化完成');
         
         // 初始化各個管理器
-        console.log('創建管理器實例...');
-        studentManager = new StudentManager(dataManager);
-        classManager = new ClassManager(dataManager);
-        attendanceManager = new AttendanceManager(dataManager);
-        statisticsManager = new StatisticsManager(dataManager);
-        console.log('管理器實例創建完成');
+        console.log('🔧 創建管理器實例...');
+        window.studentManager = new StudentManager(dataManager);
+        window.classManager = new ClassManager(dataManager);
+        window.attendanceManager = new AttendanceManager(dataManager);
+        window.statisticsManager = new StatisticsManager(dataManager);
+        
+        // 同時設置全局變數以保持兼容性
+        studentManager = window.studentManager;
+        classManager = window.classManager;
+        attendanceManager = window.attendanceManager;
+        statisticsManager = window.statisticsManager;
+        
+        console.log('✅ 管理器實例創建完成');
         
         // 載入初始數據
-        console.log('載入初始數據...');
-        await studentManager.loadStudents();
-        await classManager.loadClasses();
-        attendanceManager.init();
-        console.log('初始數據載入完成');
+        console.log('📥 載入初始數據...');
+        await window.studentManager.loadStudents();
+        await window.classManager.loadClasses();
+        window.attendanceManager.init();
+        console.log('✅ 初始數據載入完成');
         
         // 創建主應用程式實例
-        console.log('創建主應用程式實例...');
+        console.log('🎯 創建主應用程式實例...');
         window.app = new App();
         await window.app.init();
-        console.log('主應用程式實例創建完成');
+        console.log('✅ 主應用程式實例創建完成');
         
-        console.log('✅ 應用程式初始化完成');
+        console.log('🎉 應用程式初始化完成！');
+        
+        // 顯示成功消息
+        setTimeout(() => {
+            if (window.app && window.app.showToast) {
+                window.app.showToast('系統初始化成功！', 'success');
+            }
+        }, 500);
         
     } catch (error) {
         console.error('❌ 應用程式初始化失敗:', error);
-        alert('系統初始化失敗，請重新整理頁面。錯誤: ' + error.message);
+        console.error('錯誤堆疊:', error.stack);
+        
+        // 顯示詳細錯誤信息
+        const errorMessage = `系統初始化失敗：${error.message}\n\n請嘗試：\n1. 重新整理頁面\n2. 清除瀏覽器緩存\n3. 使用現代瀏覽器\n4. 檢查網路連接`;
+        alert(errorMessage);
+        
+        // 嘗試基本的錯誤恢復
+        try {
+            console.log('🔄 嘗試基本錯誤恢復...');
+            
+            // 清除可能損壞的localStorage數據
+            if (typeof localStorage !== 'undefined') {
+                const keys = ['students', 'attendance', 'classSchedule', 'classDefinitions'];
+                keys.forEach(key => {
+                    try {
+                        const data = localStorage.getItem(key);
+                        if (data) {
+                            JSON.parse(data); // 測試是否為有效JSON
+                        }
+                    } catch (e) {
+                        console.warn(`清除損壞的數據: ${key}`);
+                        localStorage.removeItem(key);
+                    }
+                });
+            }
+            
+        } catch (recoveryError) {
+            console.error('錯誤恢復失敗:', recoveryError);
+        }
     }
 });
 
