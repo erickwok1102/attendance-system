@@ -1,205 +1,111 @@
-// 學員管理模組
-class StudentManager {
-    constructor(dataManager) {
-        this.dataManager = dataManager;
-        this.currentEditingId = null;
+    async loadStudents() {
+        try {
+            this.students = this.dataManager.getStudents();
+            return this.students;
+        } catch (error) {
+            console.error('載入學員失敗:', error);
+            throw error;
+        }
     }
 
-    // 初始化學員管理
-    init() {
-        this.setupEventListeners();
-        this.loadStudents();
+    getStudentsByClass(classId) {
+        return this.students.filter(student => student.class === classId);
     }
 
-    // 設置事件監聽器
-    setupEventListeners() {
-        // 學員表單提交
-        document.getElementById('studentForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            if (this.currentEditingId) {
-                this.updateStudent();
-            } else {
-                this.addStudent();
+    async addStudent(studentData) {
+        try {
+            // 驗證必要欄位
+            if (!studentData.name || !studentData.className) {
+                throw new Error('姓名和班別為必填欄位');
             }
-        });
-    }
 
-    // 新增學員
-    addStudent() {
-        const studentData = this.getFormData();
-        
-        if (!studentData.name || !studentData.class) {
-            alert('請填寫必填欄位');
-            return;
+            // 檢查是否已存在相同姓名的學員
+            const existingStudent = this.students.find(s => 
+                s.name === studentData.name && this.dataManager.getClassName(s.class) === studentData.className
+            );
+            
+            if (existingStudent) {
+                throw new Error('該班別中已存在同名學員');
+            }
+
+            // 找到對應的classId
+            const classId = this.getClassIdByName(studentData.className);
+            if (!classId) {
+                throw new Error('找不到對應的班別');
+            }
+
+            // 創建學員對象
+            const studentForDataManager = {
+                name: studentData.name.trim(),
+                class: classId,
+                phone: studentData.phone || '',
+                email: studentData.email || '',
+                emergencyContactName: studentData.emergencyContact || '',
+                emergencyContactPhone: studentData.emergencyPhone || '',
+                notes: studentData.notes || ''
+            };
+
+            // 保存到數據管理器
+            const student = this.dataManager.addStudent(studentForDataManager);
+            
+            if (student) {
+                // 轉換為統一格式
+                const formattedStudent = {
+                    ...student,
+                    className: studentData.className,
+                    classId: classId,
+                    emergencyContact: student.emergencyContactName,
+                    emergencyPhone: student.emergencyContactPhone
+                };
+                
+                this.students.push(formattedStudent);
+                return formattedStudent;
+            } else {
+                throw new Error('保存學員失敗');
+            }
+        } catch (error) {
+            console.error('新增學員失敗:', error);
+            throw error;
         }
-
-        const student = this.dataManager.addStudent(studentData);
-        this.loadStudents();
-        this.closeModal();
-        alert('學員新增成功！');
     }
 
-    // 更新學員
-    updateStudent() {
-        const studentData = this.getFormData();
-        
-        if (!studentData.name || !studentData.class) {
-            alert('請填寫必填欄位');
-            return;
-        }
+    async deleteStudent(studentId) {
+        try {
+            const studentIndex = this.students.findIndex(s => s.id === studentId);
+            
+            if (studentIndex === -1) {
+                throw new Error('找不到指定學員');
+            }
 
-        const updated = this.dataManager.updateStudent(this.currentEditingId, studentData);
-        if (updated) {
-            this.loadStudents();
-            this.closeModal();
-            this.resetForm();
-            alert('學員資料更新成功！');
-        }
-    }
+            // 檢查是否有相關的點名記錄
+            const attendanceRecords = this.dataManager.getAttendance().filter(a => a.studentId === studentId);
+            
+            if (attendanceRecords.length > 0) {
+                const confirmDelete = confirm(
+                    `該學員有 ${attendanceRecords.length} 筆點名記錄，刪除學員將同時刪除所有相關記錄。確定要繼續嗎？`
+                );
+                
+                if (!confirmDelete) {
+                    return false;
+                }
+            }
 
-    // 編輯學員
-    editStudent(studentId) {
-        const student = this.dataManager.getStudent(studentId);
-        if (!student) return;
-        
-        this.currentEditingId = studentId;
-        this.fillForm(student);
-        
-        // 修改表單標題和按鈕
-        document.querySelector('#addStudentModal h3').textContent = '編輯學員';
-        document.querySelector('#addStudentModal .btn-primary').textContent = '更新學員';
-        
-        this.showModal();
-    }
-
-    // 刪除學員
-    deleteStudent(studentId) {
-        const student = this.dataManager.getStudent(studentId);
-        if (!student) return;
-
-        if (confirm(`確定要刪除學員 ${student.name} 嗎？`)) {
+            // 從數據管理器中刪除
             this.dataManager.deleteStudent(studentId);
-            this.loadStudents();
-            alert('學員已刪除！');
+            this.students.splice(studentIndex, 1);
+            return true;
+        } catch (error) {
+            console.error('刪除學員失敗:', error);
+            throw error;
         }
     }
 
-    // 載入學員列表
-    loadStudents() {
-        const container = document.getElementById('studentsList');
-        const students = this.dataManager.getStudents();
-        
-        if (students.length === 0) {
-            container.innerHTML = '<p>暫無學員資料</p>';
-            return;
+    getClassIdByName(className) {
+        const classes = this.dataManager.classDefinitions;
+        for (const [id, classData] of Object.entries(classes)) {
+            if (classData.name === className) {
+                return id;
+            }
         }
-
-        container.innerHTML = students.map(student => `
-            <div class="student-card">
-                <div class="student-header">
-                    <div>
-                        <span class="student-name">${student.name}</span>
-                        <span class="class-badge">${this.dataManager.getClassName(student.class)}</span>
-                    </div>
-                    <div>
-                        <button class="btn btn-secondary" onclick="studentManager.editStudent('${student.id}')">編輯</button>
-                        <button class="btn btn-danger" onclick="studentManager.deleteStudent('${student.id}')">刪除</button>
-                    </div>
-                </div>
-                <div>
-                    <strong>聯絡資料：</strong> ${student.email || '未填寫'} | ${student.phone || '未填寫'}<br>
-                    <strong>緊急聯絡人：</strong> ${student.emergencyContactName || '未填寫'} (${student.emergencyContactPhone || '未填寫'})<br>
-                    <strong>加入日期：</strong> ${student.joinDate}
-                </div>
-            </div>
-        `).join('');
+        return null;
     }
-
-    // 獲取表單數據
-    getFormData() {
-        return {
-            name: document.getElementById('studentName').value,
-            class: document.getElementById('studentClass').value,
-            birthDate: document.getElementById('studentBirthDate').value,
-            gender: document.getElementById('studentGender').value,
-            email: document.getElementById('studentEmail').value,
-            phone: document.getElementById('studentPhone').value,
-            emergencyContactName: document.getElementById('emergencyContactName').value,
-            emergencyContactPhone: document.getElementById('emergencyContactPhone').value
-        };
-    }
-
-    // 填充表單
-    fillForm(student) {
-        document.getElementById('studentName').value = student.name || '';
-        document.getElementById('studentClass').value = student.class || '';
-        document.getElementById('studentBirthDate').value = student.birthDate || '';
-        document.getElementById('studentGender').value = student.gender || '';
-        document.getElementById('studentEmail').value = student.email || '';
-        document.getElementById('studentPhone').value = student.phone || '';
-        document.getElementById('emergencyContactName').value = student.emergencyContactName || '';
-        document.getElementById('emergencyContactPhone').value = student.emergencyContactPhone || '';
-    }
-
-    // 重置表單
-    resetForm() {
-        document.getElementById('studentForm').reset();
-        document.querySelector('#addStudentModal h3').textContent = '新增學員';
-        document.querySelector('#addStudentModal .btn-primary').textContent = '新增學員';
-        this.currentEditingId = null;
-    }
-
-    // 顯示 Modal
-    showModal() {
-        document.getElementById('addStudentModal').style.display = 'block';
-    }
-
-    // 關閉 Modal
-    closeModal() {
-        document.getElementById('addStudentModal').style.display = 'none';
-        this.resetForm();
-    }
-
-    // 匯出學員資料
-    exportStudents() {
-        const students = this.dataManager.getStudents();
-        const csvContent = "data:text/csv;charset=utf-8," + 
-            "姓名,班別,出生日期,性別,電郵,電話,緊急聯絡人,緊急聯絡人電話,加入日期,狀態\n" +
-            students.map(s => [
-                s.name, 
-                this.dataManager.getClassName(s.class), 
-                s.birthDate || '', 
-                s.gender || '',
-                s.email || '', 
-                s.phone || '', 
-                s.emergencyContactName || '', 
-                s.emergencyContactPhone || '', 
-                s.joinDate, 
-                s.status
-            ].join(",")).join("\n");
-
-        const link = document.createElement("a");
-        link.setAttribute("href", encodeURI(csvContent));
-        link.setAttribute("download", "students.csv");
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    }
-}
-
-// 全局函數 (為了向後兼容)
-function showModal(modalId) {
-    document.getElementById(modalId).style.display = 'block';
-}
-
-function closeModal(modalId) {
-    if (modalId === 'addStudentModal') {
-        studentManager.closeModal();
-    } else {
-        document.getElementById(modalId).style.display = 'none';
-    }
-}
-
-function exportStudents() {
-    studentManager.exportStudents();
-} 
