@@ -19,12 +19,23 @@ class DataManager {
         try {
             // 檢查是否有Google Sheets配置
             if (this.SHEET_ID && this.API_KEY) {
-                await this.initializeGoogleSheetsAPI();
-                this.isGoogleSheetsEnabled = true;
-                console.log('Google Sheets API 已初始化');
+                // 檢查Google API是否可用
+                if (typeof gapi !== 'undefined') {
+                    await this.initializeGoogleSheetsAPI();
+                    this.isGoogleSheetsEnabled = true;
+                    console.log('Google Sheets API 已初始化');
+                } else {
+                    console.log('Google API 未載入，使用本地存儲模式');
+                    this.isGoogleSheetsEnabled = false;
+                }
             } else {
                 console.log('使用本地存儲模式');
+                this.isGoogleSheetsEnabled = false;
             }
+            
+            // 確保數據結構完整
+            this.ensureDataIntegrity();
+            
         } catch (error) {
             console.warn('Google Sheets API 初始化失敗，使用本地存儲:', error);
             this.isGoogleSheetsEnabled = false;
@@ -578,6 +589,26 @@ class DataManager {
                 createdAt: new Date().toISOString()
             };
         });
+    }
+
+    // 確保數據結構完整
+    ensureDataIntegrity() {
+        if (!Array.isArray(this.students)) {
+            this.students = [];
+        }
+        if (typeof this.attendance !== 'object' || this.attendance === null) {
+            this.attendance = {};
+        }
+        if (!Array.isArray(this.classSchedule)) {
+            this.classSchedule = [];
+        }
+        if (typeof this.classDefinitions !== 'object' || this.classDefinitions === null) {
+            this.classDefinitions = {
+                youth: { name: '青年班', startTime: '16:00', endTime: '17:30', dayOfWeek: 6, frequency: 'weekly' },
+                children: { name: '兒童班', startTime: '17:30', endTime: '19:00', dayOfWeek: 6, frequency: 'weekly' },
+                family: { name: '家規班', startTime: '10:00', endTime: '11:30', dayOfWeek: 6, frequency: 'weekly' }
+            };
+        }
     }
 }
 

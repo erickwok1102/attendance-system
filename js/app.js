@@ -9,29 +9,39 @@ let statisticsManager;
 // 應用程式初始化
 document.addEventListener('DOMContentLoaded', async function() {
     try {
+        console.log('開始初始化應用程式...');
+        
         // 初始化數據管理器
+        console.log('初始化數據管理器...');
         await dataManager.init();
+        console.log('數據管理器初始化完成');
         
         // 初始化各個管理器
+        console.log('創建管理器實例...');
         studentManager = new StudentManager(dataManager);
         classManager = new ClassManager(dataManager);
         attendanceManager = new AttendanceManager(dataManager);
         statisticsManager = new StatisticsManager(dataManager);
+        console.log('管理器實例創建完成');
         
         // 載入初始數據
+        console.log('載入初始數據...');
         await studentManager.loadStudents();
         await classManager.loadClasses();
         attendanceManager.init();
+        console.log('初始數據載入完成');
         
         // 創建主應用程式實例
+        console.log('創建主應用程式實例...');
         window.app = new App();
         await window.app.init();
+        console.log('主應用程式實例創建完成');
         
-        console.log('應用程式初始化完成');
+        console.log('✅ 應用程式初始化完成');
         
     } catch (error) {
-        console.error('應用程式初始化失敗:', error);
-        alert('系統初始化失敗，請重新整理頁面');
+        console.error('❌ 應用程式初始化失敗:', error);
+        alert('系統初始化失敗，請重新整理頁面。錯誤: ' + error.message);
     }
 });
 
@@ -784,14 +794,14 @@ function filterStudents() {
 }
 
 function loadAttendanceList() {
-    if (attendanceManager) {
-        attendanceManager.loadAttendance();
+    if (window.app) {
+        app.loadAttendanceList();
     }
 }
 
 function saveAttendance() {
-    if (attendanceManager) {
-        attendanceManager.saveAttendance();
+    if (window.app) {
+        app.saveAttendance();
     }
 }
 
