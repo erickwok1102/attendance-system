@@ -361,4 +361,4 @@ class StatisticsManager {
             .map(row => row.map(field => `"${field}"`).join(','))
             .join('\n');
     }
-}
+} 
